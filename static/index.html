@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ARGON SPRITE FORGE — .NET 8 Desktop</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-badge">ARGON HIGH</span>
+      <h1>SPRITE FORGE // C# .NET 8 + ONNX Desktop</h1>
+    </div>
+    <div class="topbar-actions">
+      <select id="projectSelect" style="width:210px;">
+        <option value="">— Выберите или создайте проект —</option>
+      </select>
+      <button id="btnOpenProjectDir" title="Открыть папку проекта в Проводнике">Папка</button>
+      <button id="btnDeleteProject" class="danger" title="Удалить проект">Удалить</button>
+      <button id="btnExportGrid" class="cyan">Экспорт PNG (Сетка)</button>
+      <button id="btnExportStrip" class="cyan">Экспорт PNG (Стрип)</button>
+      <button id="btnExportBundle" class="primary">Скачать ZIP (PNG+JSON+Кадры+WebP)</button>
+    </div>
+  </header>
+
+  <div class="workspace">
+    <!-- ЛЕВАЯ ПАНЕЛЬ -->
+    <aside class="col">
+      <div class="section">
+        <div class="section-title">
+          <span>1. Эталон персонажа</span>
+          <span id="projIdLabel" class="hint">нет проекта</span>
+        </div>
+        <div class="row">
+          <input type="text" id="newProjectName" placeholder="Название (напр. Шершень Босс)" />
+        </div>
+        <div class="ref-box" id="refDropZone">
+          <img id="refPreview" class="ref-preview" style="display:none;" alt="Reference" />
+          <div id="refPlaceholder" class="hint">Кликните или перетащите сюда эталонную картинку (PNG / JPG / WebP)</div>
+          <input type="file" id="refFileInput" accept="image/*" style="display:none;" />
+        </div>
+        <div id="passportBox" class="passport-box" style="display:none;"></div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">
+          <span>2. API и модели (Gemini)</span>
+          <span id="envKeyBadge" class="hint"></span>
+        </div>
+        <label class="field">
+          Gemini API Key (локально в WebView2 / ENV)
+          <input type="password" id="apiKeyInput" placeholder="AIza... (опционально для CV/ONNX/Слайсера)" />
+        </label>
+        <div class="grid-2">
+          <label class="field">
+            Агент 1 и 3 (Режиссёр/QA)
+            <input type="text" id="directorModel" value="gemini-2.5-flash" />
+          </label>
+          <label class="field">
+            Агент 2 (Художник кадров)
+            <input type="text" id="artistModel" value="gemini-2.5-flash-image" />
+          </label>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title"><span>3. Агент 1 — Режиссёр (План движения)</span></div>
+        <div class="grid-2">
+          <label class="field">
+            Тип анимации
+            <select id="motionPreset">
+              <option value="turnaround_y">Разворот 360° (ось Y)</option>
+              <option value="turnaround_x">Кувырок 360° (ось X)</option>
+              <option value="flight_cycle">Полёт (цикл взмаха)</option>
+              <option value="rest_foraging">Покой / Копошение</option>
+              <option value="attack_sting">Атака жалом</option>
+              <option value="idle_breath">Дыхание (Idle)</option>
+              <option value="walk_cycle">Ходьба / Бег</option>
+              <option value="custom">Свой сценарий</option>
+            </select>
+          </label>
+          <label class="field">
+            Кол-во кадров
+            <select id="frameCount">
+              <option value="4">4 кадра (90°)</option>
+              <option value="6">6 кадров (60°)</option>
+              <option value="8" selected>8 кадров (45°)</option>
+              <option value="12">12 кадров (30°)</option>
+              <option value="16">16 кадров</option>
+              <option value="24">24 кадра (15°)</option>
+            </select>
+          </label>
+        </div>
+        <label class="field">
+          Описание нужных движений (доп. инструкции)
+          <textarea id="customMotion" rows="2" placeholder="Например: агрессивный рывок вперёд, крылья в motion blur, жало направлено на цель..."></textarea>
+        </label>
+        <div class="grid-2">
+          <label class="check"><input type="checkbox" id="optShadowless" checked /> Без теней на полу</label>
+          <label class="check"><input type="checkbox" id="optWingless" /> Без крыльев (база)</label>
+        </div>
+        <label class="check"><input type="checkbox" id="optTopLight" checked /> Фиксированный свет сверху</label>
+        <button id="btnRunDirector" class="primary">Спланировать раскадровку (Агент 1)</button>
+      </div>
+
+      <div class="section">
+        <div class="section-title"><span>4. Агент 2–4 — Генерация кадров</span></div>
+        <label class="check"><input type="checkbox" id="optPrevAnchor" checked /> Якорь на предыдущий кадр</label>
+        <label class="check"><input type="checkbox" id="optAiQa" /> Включить Vision QA (Агент 3)</label>
+        <label class="check"><input type="checkbox" id="optAutoRetry" checked /> Авто-повтор брака (до 1 раза)</label>
+        <button id="btnRunGenerate" class="primary">Запустить генерацию всех кадров</button>
+        <div class="progress-track"><div id="jobProgressFill" class="progress-fill"></div></div>
+        <div id="jobStageText" class="hint">Статус: ожидание</div>
+      </div>
+
+      <div class="section">
+        <div class="section-title"><span>Офлайн-слайсер (без API-ключа)</span></div>
+        <div class="hint">Нарежьте готовый референс-лист (напр. Hornet.jpg 4×1 или пчелу 6×4) в кадры и прогоните через C# CV / ONNX RGBA + Pivot Lock:</div>
+        <div class="grid-3">
+          <label class="field">
+            Режим
+            <select id="sliceMode">
+              <option value="auto_horizontal">Авто-поиск</option>
+              <option value="grid">Сетка</option>
+            </select>
+          </label>
+          <label class="field">Колонки<input type="number" id="sliceCols" value="4" min="1" max="24" /></label>
+          <label class="field">Ряды<input type="number" id="sliceRows" value="1" min="1" max="12" /></label>
+        </div>
+        <div class="grid-2">
+          <label class="field">Срез шапки (px)<input type="number" id="sliceHeader" value="0" min="0" /></label>
+          <label class="field">Срез низа (px)<input type="number" id="sliceFooter" value="0" min="0" /></label>
+        </div>
+        <button id="btnSliceRef" class="cyan">Нарезать эталон → RGBA + Pivot Lock</button>
+      </div>
+    </aside>
+
+    <!-- ЦЕНТР -->
+    <main class="center">
+      <div class="stage-toolbar">
+        <div class="row">
+          <button id="btnPlay" class="primary">▶ Играть</button>
+          <button id="btnPrev">◀</button>
+          <button id="btnNext">▶</button>
+          <button id="btnPingPong" class="toggle">Пинг-Понг</button>
+          <label class="row hint" style="margin-left:6px;">
+            FPS: <strong id="fpsVal" style="color:var(--accent);">10</strong>
+            <input type="range" id="fpsSlider" min="1" max="30" value="10" style="width:90px;" />
+          </label>
+        </div>
+        <div class="row">
+          <button id="btnOnion" class="toggle">Onion Skin</button>
+          <button id="btnLoupe" class="toggle">Лупа 4×</button>
+          <button id="btnPivotGuide" class="toggle active">Pivot</button>
+          <button id="btnShowRaw" class="toggle">Raw / RGBA</button>
+          <select id="bgSelect" style="width:125px;">
+            <option value="bg-checker">Шахматка (Alpha)</option>
+            <option value="bg-studio">Студия (#a8afb5)</option>
+            <option value="bg-dark">Тёмный фон</option>
+            <option value="bg-green">Хромакей</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="stage-area" id="stageArea">
+        <div class="canvas-shell bg-checker" id="canvasShell">
+          <canvas id="stageCanvas" width="384" height="384"></canvas>
+        </div>
+        <canvas id="loupeCanvas" width="160" height="160"></canvas>
+      </div>
+
+      <div class="timeline-panel">
+        <div class="timeline-bar">
+          <span class="section-title" style="color:var(--text);">
+            Таймлайн кадров (<span id="timelineCount">0</span>)
+          </span>
+          <span id="activeFrameInfo" class="hint">Выберите кадр для инспекции и правки</span>
+        </div>
+        <div class="timeline-strip" id="timelineStrip"></div>
+      </div>
+
+      <div class="logs-box" id="logsBox"></div>
+    </main>
+
+    <!-- ПРАВАЯ ПАНЕЛЬ -->
+    <aside class="col right">
+      <div class="section">
+        <div class="section-title">
+          <span>Инспектор кадра (Агент 3 QA)</span>
+          <span id="selFrameBadge" class="hint">—</span>
+        </div>
+        <div class="qa-grid">
+          <div class="qa-box"><span>QA Статус</span><strong id="qaStatus">—</strong></div>
+          <div class="qa-box"><span>MAD к пред.</span><strong id="qaMad">—</strong></div>
+          <div class="qa-box"><span>Поля (T/B/L/R)</span><strong id="qaMargins">—</strong></div>
+          <div class="qa-box"><span>AI Оценка</span><strong id="qaAiScore">—</strong></div>
+        </div>
+        <div id="qaAiNotes" class="hint" style="display:none;"></div>
+
+        <label class="field">
+          Промпт кадра (редактируемый)
+          <textarea id="framePromptInput" rows="3" placeholder="Промпт выбранного кадра..."></textarea>
+        </label>
+        <label class="field">
+          Правка для перегенерации этого кадра
+          <input type="text" id="frameTweakInput" placeholder="Напр.: поверни голову правее, убери тень..." />
+        </label>
+        <div class="grid-2">
+          <button id="btnRegenFrame" class="primary">Перегенерировать кадр</button>
+          <button id="btnUploadFrame">Заменить файлом</button>
+          <input type="file" id="singleFrameFileInput" accept="image/*" style="display:none;" />
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">
+          <span>Микро-правка кадра (Pivot & Alpha)</span>
+          <label class="check"><input type="checkbox" id="adjEnabled" checked /> Активен</label>
+        </div>
+        <div class="grid-2">
+          <label class="field">Сдвиг X (px)<input type="number" id="adjDx" value="0" step="1" /></label>
+          <label class="field">Сдвиг Y (px)<input type="number" id="adjDy" value="0" step="1" /></label>
+          <label class="field">Масштаб<input type="number" id="adjScale" value="1.0" step="0.02" min="0.2" max="2.5" /></label>
+          <label class="field">Поворот (°)<input type="number" id="adjRot" value="0" step="1" min="-180" max="180" /></label>
+        </div>
+        <div class="grid-2">
+          <label class="field">Порог Alpha (override)<input type="number" id="adjAlpha" placeholder="глобальный" step="1" /></label>
+          <label class="field">Срез тени (0..1)<input type="number" id="adjShadow" placeholder="глобальный" step="0.05" min="0" max="1" /></label>
+        </div>
+        <div class="grid-2">
+          <button id="btnApplyAdj" class="cyan">Применить к кадру</button>
+          <button id="btnDeleteFrame" class="danger">Удалить кадр</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title"><span>Агент 4 — C# CV / ONNX (Все кадры)</span></div>
+        <div class="grid-2">
+          <label class="field">Ширина ячейки<input type="number" id="cvWidth" value="256" step="8" min="64" max="1024" /></label>
+          <label class="field">Высота ячейки<input type="number" id="cvHeight" value="256" step="8" min="64" max="1024" /></label>
+        </div>
+        <div class="grid-2">
+          <label class="field">
+            Удаление фона
+            <select id="cvBgMethod">
+              <option value="studio_cv">C# Studio CV (быстро)</option>
+              <option value="onnx">ONNX Matting (U2Net/RMBG)</option>
+              <option value="none">Без удаления</option>
+            </select>
+          </label>
+          <label class="field">
+            Привязка (Pivot Lock)
+            <select id="cvAnchor">
+              <option value="center">По центру</option>
+              <option value="bottom_center">По ногам (Bottom)</option>
+              <option value="thoracic_pivot">Грудной Pivot</option>
+            </select>
+          </label>
+        </div>
+        <label class="field">
+          ONNX-модель (из папки models/ рядом с EXE)
+          <div class="row">
+            <select id="cvOnnxModel" style="flex:1;">
+              <option value="">— Положите u2net.onnx в models/ —</option>
+            </select>
+            <button id="btnOpenModels" title="Открыть папку models/ в Проводнике" style="padding:6px 8px;">models/</button>
+            <button id="btnRefreshModels" title="Пересканировать папку models/" style="padding:6px 8px;">↻</button>
+          </div>
+        </label>
+        <div class="grid-3">
+          <label class="field">Заполнение<input type="number" id="cvFill" value="0.80" step="0.02" min="0.4" max="0.96" /></label>
+          <label class="field">Порог фона<input type="number" id="cvAlpha" value="14" step="1" min="3" max="60" /></label>
+          <label class="field">Срез тени<input type="number" id="cvShadow" value="0.35" step="0.05" min="0" max="1" /></label>
+        </div>
+        <div class="grid-2">
+          <label class="check"><input type="checkbox" id="cvFillHoles" checked /> Заливка бликов глаз</label>
+          <label class="check"><input type="checkbox" id="cvPrimaryOnly" checked /> Убрать мусор фона</label>
+        </div>
+        <button id="btnReprocessAll" class="cyan">Пересчитать все кадры (CV / ONNX)</button>
+      </div>
+    </aside>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
