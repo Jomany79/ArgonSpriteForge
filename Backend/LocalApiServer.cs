@@ -575,7 +575,8 @@ public sealed class LocalApiServer : IAsyncDisposable
         {
             try
             {
-                await _app.StopAsync(TimeSpan.FromSeconds(2));
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+                await _app.StopAsync(cts.Token);
             }
             catch
             {
