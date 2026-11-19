@@ -89,11 +89,11 @@ public static class OnnxMattingEngine
 
             using Image<Rgba32> resized = source.Clone(ctx => ctx.Resize(targetW, targetH, KnownResamplers.Bicubic));
             var tensor = new DenseTensor<float>(new[] { 1, 3, targetH, targetW });
-            Span<float> tensorSpan = tensor.Buffer.Span;
             int planeSize = targetW * targetH;
 
             resized.ProcessPixelRows(accessor =>
             {
+                Span<float> tensorSpan = tensor.Buffer.Span;
                 for (int y = 0; y < targetH; y++)
                 {
                     Span<Rgba32> row = accessor.GetRowSpan(y);
